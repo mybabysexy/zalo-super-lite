@@ -56,16 +56,22 @@ npm run dev
 ```
 
 ### Docker Deployment
+There are 2 files
+- `docker-compose-cookie.yml`: For running the application with cookie authentication, need `cookies.json` file binding.
+  - IMEI: `localStorage.getItem('z_uuid')`
+  - User Agent: `navigator.userAgent`
+- `docker-compose-qr.yml`: For running the application with QR code authentication.
+  - User Agent: `navigator.userAgent`
 
 ```bash
 # Build and start with Docker Compose
-docker-compose up -d
+docker-compose -f docker-compose-qr up -d
 
 # View logs
 docker logs bb-zl-ejs
 
 # Stop the container
-docker-compose down
+docker-compose -f docker-compose-qr down
 ```
 
 ## Technology Stack

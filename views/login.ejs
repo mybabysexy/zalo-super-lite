@@ -66,6 +66,12 @@
         }
 
         document.addEventListener('DOMContentLoaded', function () {
+            // clear localStorage if errorMessage is present
+            var errorBox = document.querySelector('.error-message');
+            if (errorBox) {
+                localStorage.removeItem('authToken');
+            }
+
             var loginForm = document.getElementById('loginForm');
             if (loginForm) {
                 loginForm.addEventListener('submit', saveTokenAndSubmit);

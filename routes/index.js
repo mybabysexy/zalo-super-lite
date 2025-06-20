@@ -6,6 +6,15 @@ router.get('/', function (req, res, next) {
     res.status(404).render('error', { message: 'Not found', error: { status: 404, stack: '' } });
 });
 
+router.get('/health', function (req, res, next) {
+    res.status(200).json({
+        status: 'ok',
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime(),
+        memoryUsage: process.memoryUsage(),
+    });
+});
+
 router.get('/login', function (req, res, next) {
     const errorMessage = req.query.error || '';
     res.render('login', {

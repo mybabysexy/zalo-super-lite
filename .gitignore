@@ -46,3 +46,4 @@ bower_components
 # Project specific files
 cookie.json
 db.json
+/public/images/qr.png
