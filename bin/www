@@ -1,0 +1,322 @@
+#!/usr/bin/env node
+
+/**
+ * Module dependencies.
+ */
+
+var app = require('../app');
+var debug = require('debug')('bb-zl-ejs:server');
+var http = require('http');
+
+var WebSocket = require('ws');
+var Zalo = require("zca-js").Zalo;
+var fs = require('fs');
+
+/**
+ * Get port from environment and store in Express.
+ */
+
+var port = normalizePort(process.env.PORT || '3000');
+app.set('port', port);
+
+/**
+ * Create HTTP server.
+ */
+
+var server = http.createServer(app);
+
+/**
+ * Listen on provided port, on all network interfaces.
+ */
+
+server.listen(port);
+server.on('error', onError);
+server.on('listening', onListening);
+
+
+// temp DB
+var db = new Map();
+// read db from file if exists
+if (fs.existsSync('./db.json')) {
+    const dbContent = fs.readFileSync('./db.json', 'utf-8');
+    const dbEntries = JSON.parse(dbContent);
+    db = new Map(dbEntries); // Convert array of entries back to Map
+}
+
+var zaloApi = null; // Initialize Zalo API variable
+
+/**
+ * Create WebSocket server.
+ */
+const wss = new WebSocket.Server({
+    server,
+    // Add a verification function for authentication
+    verifyClient: (info) => {
+        // Parse URL query parameters to get the token
+        const url = new URL(info.req.url, `http://${info.req.headers.host}`);
+        const token = url.searchParams.get('token');
+
+        // Check if token exists
+        if (!token) {
+            console.log('Connection rejected: Missing token parameter');
+            return false;
+        }
+
+        // Here you would validate the token against your authentication system
+        // For this example, we'll use a simple check for a valid token
+        // In a real application, you would verify the token against your database or auth service
+
+        // Example valid token (in a real app, use a secure token system)
+        const validToken = process.env.WS_AUTH_TOKEN || '123123';
+
+        const isValid = token === validToken;
+
+        if (!isValid) {
+            console.log('Connection rejected: Invalid token');
+        } else {
+            console.log('Connection authorized: Valid token');
+        }
+
+        return isValid;
+    }
+});
+
+// Handle WebSocket connections
+wss.on('connection', function connection(ws, req) {
+    // Extract token from the URL
+    const url = new URL(req.url, `http://${req.headers.host}`);
+    const token = url.searchParams.get('token');
+
+    // You can store user information from the token on the ws object
+    ws.user = { token }; // In a real app, decode the JWT token and store user info
+
+    console.log('A client connected with valid authentication');
+
+    ws.on('message', async function incoming(message) {
+        if (!zaloApi) {
+            console.error('Zalo API not initialized. Cannot process messages.');
+            ws.send(JSON.stringify({ error: 'Zalo API not initialized' }));
+            return;
+        }
+
+        try {
+            const parsedMessage = JSON.parse(message);
+
+            switch (parsedMessage.action) {
+                case 'getAllFriends': {
+                    const friends = await zaloApi.getAllFriends();
+                    ws.send(JSON.stringify({
+                        action: parsedMessage.action,
+                        success: true,
+                        data: friends,
+                    }));
+                    break;
+                }
+                case 'fetchAccountInfo': {
+                    const info = await zaloApi.fetchAccountInfo();
+                    ws.send(JSON.stringify({
+                        action: parsedMessage.action,
+                        success: true,
+                        data: info,
+                    }));
+                    break;
+                }
+
+                case 'getMessages': {
+                    ws.send(JSON.stringify({
+                        action: parsedMessage.action,
+                        success: true,
+                        data: Array.from(db.entries()).map(([ threadId, messages ]) => ({
+                            threadId,
+                            messages
+                        })),
+                    }));
+                    break;
+                }
+
+                case 'getChat': {
+                    const threadId = parsedMessage.threadId;
+                    if (db.has(threadId)) {
+                        ws.send(JSON.stringify({
+                            action: parsedMessage.action,
+                            success: true,
+                            data: db.get(threadId),
+                        }));
+                    } else {
+                        ws.send(JSON.stringify({ error: 'Thread not found' }));
+                    }
+                    break;
+                }
+
+                case 'sendMessage': {
+                    const { threadId, content } = parsedMessage;
+                    console.log('Sending message:', { threadId, content });
+
+                    const res = await zaloApi.sendMessage(content, threadId);
+                    ws.send(JSON.stringify({
+                        action: parsedMessage.action,
+                        success: true,
+                        data: res,
+                    }));
+
+                    break;
+                }
+
+                default:
+                    console.log('Unknown message type:', parsedMessage.action);
+                    ws.send(JSON.stringify({ error: 'Unknown message type' }));
+                    break;
+            }
+        } catch (e) {
+            console.error('Error parsing message:', e);
+            // reset server if error occurs
+            process.exit(1);
+        }
+    });
+
+    ws.on('close', function () {
+        console.log('Client disconnected');
+    });
+
+    ws.send(JSON.stringify({ action: 'welcome', success: true, message: 'Welcome to the WebSocket server!' }));
+});
+
+const zalo = new Zalo({
+    selfListen: true, // mặc định false, lắng nghe sự kiện của bản thân
+    checkUpdate: true, // mặc định true, kiểm tra update
+    logging: true // mặc định true, bật/tắt log mặc định của thư viện
+});
+
+const callback = (api) => {
+    zaloApi = api; // Store the API instance for later use
+
+    // Broadcast the message to all WebSocket clients
+    wss.clients.forEach(function each(client) {
+        if (client.readyState === WebSocket.OPEN) {
+            client.send(JSON.stringify({
+                action: 'login-success',
+                success: true,
+            }));
+        }
+    });
+
+    api.listener.start();
+
+    api.listener.on("message", async (message) => {
+        // console.log(message);
+
+        // get sticker
+        if (typeof message.data.content === 'object' && message.data.content.type === 7) {
+            const stickers = await api.getStickersDetail(message.data.content.id);
+            if (stickers.length > 0) {
+                message.data.sticker = stickers[0];
+            }
+        }
+
+        // Save the message to the temp DB
+        if (!db.has(message.threadId)) {
+            db.set(message.threadId, []);
+        }
+        db.get(message.threadId).push(message);
+
+        // save DB to file
+        fs.writeFileSync('./db.json', JSON.stringify(Array.from(db.entries())));
+
+        // Broadcast the message to all WebSocket clients
+        wss.clients.forEach(function each(client) {
+            if (client.readyState === WebSocket.OPEN) {
+                client.send(JSON.stringify({
+                    action: 'newMessage',
+                    success: true,
+                    data: message
+                }));
+            }
+        });
+    });
+
+    // delete old QR code if exists
+    if (fs.existsSync('./public/images/qr.png')) {
+        fs.unlinkSync('./public/images/qr.png');
+    }
+}
+
+try {
+    const imei = process.env.IMEI;
+    const userAgent = process.env.USER_AGENT;
+    if (!imei || !userAgent) {
+        throw new Error("IMEI and USER_AGENT environment variables must be set.");
+    }
+
+    const cookie = JSON.parse(fs.readFileSync("./cookie.json", "utf-8"));
+
+    zalo.login({
+        cookie: cookie,
+        imei: process.env.IMEI, // localStorage.getItem('z_uuid')
+        userAgent: process.env.USER_AGENT, // navigator.userAgent
+    }).then(callback);
+} catch {
+    zalo.loginQR({
+        userAgent: process.env.USER_AGENT, // navigator.userAgent
+        qrPath: './public/images/qr.png', // Path to save the QR code image
+    }).then(callback);
+}
+
+/**
+ * Normalize a port into a number, string, or false.
+ */
+
+function normalizePort(val) {
+    var port = parseInt(val, 10);
+
+    if (isNaN(port)) {
+        // named pipe
+        return val;
+    }
+
+    if (port >= 0) {
+        // port number
+        return port;
+    }
+
+    return false;
+}
+
+/**
+ * Event listener for HTTP server "error" event.
+ */
+
+function onError(error) {
+    if (error.syscall !== 'listen') {
+        throw error;
+    }
+
+    var bind = typeof port === 'string'
+        ? 'Pipe ' + port
+        : 'Port ' + port;
+
+    // handle specific listen errors with friendly messages
+    switch (error.code) {
+        case 'EACCES':
+            console.error(bind + ' requires elevated privileges');
+            process.exit(1);
+            break;
+        case 'EADDRINUSE':
+            console.error(bind + ' is already in use');
+            process.exit(1);
+            break;
+        default:
+            throw error;
+    }
+}
+
+/**
+ * Event listener for HTTP server "listening" event.
+ */
+
+function onListening() {
+    var addr = server.address();
+    var bind = typeof addr === 'string'
+        ? 'pipe ' + addr
+        : 'port ' + addr.port;
+    debug('Listening on ' + bind);
+}

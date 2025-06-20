@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Login</title>
+    <link rel="stylesheet" href="/stylesheets/style.css">
+    <link rel="stylesheet" href="/stylesheets/utility.css">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        html, body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            text-align: center;
+        }
+
+        .login-table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: center;
+        }
+
+        .login-table td {
+            padding: 8px;
+        }
+
+        .form-input {
+            width: 90%;
+            padding: 8px;
+        }
+
+        .submit-btn {
+            width: 50%;
+            padding: 8px;
+            margin-top: 10px;
+            cursor: pointer;
+        }
+
+        .text-center {
+            text-align: center;
+        }
+
+        .text-lg {
+            font-size: 24px;
+            font-weight: bold;
+        }
+    </style>
+    <script type="text/javascript">
+        // Function to save token to localStorage and submit form
+        function saveTokenAndSubmit(event) {
+            // Get the token input value
+            var tokenInput = document.getElementById('token');
+            var tokenValue = tokenInput.value;
+
+            // Save to localStorage if token has a value
+            if (tokenValue) {
+                try {
+                    localStorage.setItem('authToken', tokenValue);
+                } catch (e) {
+                    // Handle potential localStorage errors
+                    console.error('Error saving to localStorage: ', e);
+                }
+            }
+
+            // Form will submit naturally (no need to prevent default)
+        }
+
+        document.addEventListener('DOMContentLoaded', function () {
+            var loginForm = document.getElementById('loginForm');
+            if (loginForm) {
+                loginForm.addEventListener('submit', saveTokenAndSubmit);
+            }
+
+            var existingToken = localStorage.getItem('authToken');
+            if (existingToken) {
+                window.location.href = '/chat'; // Redirect to chat list if token exists
+            }
+        });
+    </script>
+</head>
+<body>
+<div class="login-container">
+    <form id="loginForm" action="/login" method="POST">
+        <label for="token" class="text-lg text-center">Login</label>
+        <table class="login-table">
+            <tr>
+                <td><input type="password" id="token" name="token" class="form-input" required placeholder="Nhập token">
+                </td>
+            </tr>
+            <% if (typeof errorMessage !== 'undefined' && errorMessage) { %>
+                <tr>
+                    <td class="error-message" style="color: red;"><%= errorMessage %></td>
+                </tr>
+            <% } %>
+            <tr>
+                <td>
+                    <button type="submit" class="submit-btn">Đăng nhập</button>
+                </td>
+            </tr>
+        </table>
+    </form>
+</div>
+</body>
+</html>

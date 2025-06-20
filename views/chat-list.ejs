@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    <link rel="stylesheet" href="/stylesheets/style.css">
+    <link rel="stylesheet" href="/stylesheets/utility.css">
+    <link rel="stylesheet" href="/stylesheets/message-list.css">
+    <title>Zalo | Chat</title>
+
+    <script src="/javascripts/ws.js"></script>
+</head>
+<body>
+<div id="app">
+    <div class="header">
+        <input type="text" name="search" placeholder="Tìm kiếm" class="search">
+    </div>
+    <div class="content">
+        <div class="text-center m-4">Loading....</div>
+    </div>
+
+    <script>
+        function renderFriendList(friendsList) {
+            var friends = [];
+
+            for (var i = 0; i < friendsList.length; i++) {
+                const friend = friendsList[i];
+                friends.push({
+                    "threadId": friend.userId,
+                    "messages": [
+                        {
+                            "type": 0,
+                            "data": {
+                                "dName": friend.displayName || friend.zaloName,
+                                "content": "",
+                            },
+                            "threadId": friend.userId,
+                        },
+                    ]
+                });
+            }
+
+            renderMessageList(friends);
+        }
+
+        function renderMessageList(friendsData) {
+            // Create a container for the rendered content
+            var container = document.getElementById('content') || document.getElementsByClassName('content')[0];
+            var rendered = 0;
+
+            // Clear existing content
+            container.innerHTML = '';
+
+            // Process each friend and create HTML elements
+            for (var i = 0; i < friendsData.length; i++) {
+                var message = friendsData[i]['messages'].pop();
+                if (message.type === 1) {
+                    continue; // Skip if the message type is 1
+                }
+                console.log('message', message);
+
+                const friends = getFriendsFromLocalStorage();
+                var friend = null;
+                for (var j = 0; j < friends.length; j++) {
+                    if (friends[j].userId === message.threadId) {
+                        friend = friends[j];
+                        break;
+                    }
+                }
+
+                if (!friend) {
+                    console.warn('Friend not found for message:', message);
+                    continue; // Skip if friend not found
+                }
+
+                // Prepare data for EJS-like rendering
+                // var readClass = message.read ? 'read' : 'unread';
+                var readClass = 'read';
+                var name = limitText(message.data.dName || '');
+                var messageText = typeof message.data.content === 'object' ? '[Media]' : limitText(message.data.content || '', 32);
+                var avatar = friend.avatar ? friend.avatar : '/images/avatar.png';
+                var time = friend.time || '';
+                var friendId = friend.userId || '';
+
+                // Create HTML structure similar to EJS template using IE8-compatible approach
+                var friendElement = document.createElement('div');
+                friendElement.innerHTML =
+                    '<a href="/chat/' + friendId + '" class="message-link">' +
+                    '<table class="message-item ' + readClass + '">' +
+                    '<tr>' +
+                    '<td class="avatar-cell">' +
+                    '<img src="' + avatar + '" alt="Avatar" class="avatar">' +
+                    '</td>' +
+                    '<td class="message-cell">' +
+                    '<div class="message-header">' +
+                    '<span class="name">' + name + '</span>' +
+                    '<span class="time text-xs">' + time + '</span>' +
+                    '</div>' +
+                    '<div class="message-text text-sm">' +
+                    messageText +
+                    '</div>' +
+                    '</td>' +
+                    '</tr>' +
+                    '</table>' +
+                    '</a>';
+
+                container.appendChild(friendElement.firstChild);
+                rendered++;
+            }
+
+            return rendered;
+        }
+
+        document.addEventListener('zaloWebSocketOpen', function () {
+            window.zalo.getAllFriends();
+            window.zalo.getMessages();
+
+            window.zaloWebSocket.onmessage = function (event) {
+                const message = event.data;
+                try {
+                    const parsedMessage = JSON.parse(message);
+
+                    if (parsedMessage.error === 'Zalo API not initialized') {
+                        // Redirect to login page if unauthorized
+                        logout();
+                        return;
+                    }
+
+                    switch (parsedMessage.action) {
+                        case 'fetchAccountInfo':
+                            localStorage.setItem('authUser', JSON.stringify(parsedMessage.data));
+                            break;
+                        case 'getAllFriends':
+                            var friends = parsedMessage.data;
+                            console.log('Received friends list:', friends);
+                            friends.sort(function (a, b) {
+                                return (a.displayName || '').localeCompare(b.displayName || '');
+                            });
+
+                            // save friends to localStorage
+                            localStorage.setItem('friendsList', JSON.stringify(friends));
+
+                            // count messages items
+                            var messageItems = document.querySelectorAll('.message-item');
+                            if (messageItems.length === 0) {
+                                renderFriendList(friends);
+                            }
+                            break;
+                        case 'getMessages':
+                            var messages = parsedMessage.data;
+                            console.log('Received messages:', messages);
+                            var rendered = renderMessageList(messages);
+                            if (rendered === 0) {
+                                const friendsList = getFriendsFromLocalStorage();
+
+                                if (friendsList.length === 0) {
+                                    document.querySelector('.content').innerHTML = '<div class="text-center m-4">Không có bạn bè hay tin nhắn nào</div>';
+                                    return;
+                                }
+
+                                renderFriendList(friendsList);
+                            }
+                            break;
+                        case 'newMessage':
+                            window.zalo.getMessages();
+                            break;
+                        default:
+                            break;
+                    }
+                } catch (e) {
+                    console.error('Error parsing message:', e);
+                    console.log('Raw message:', message);
+                }
+            };
+
+        });
+
+        document.addEventListener('DOMContentLoaded', function () {
+            // search functionality
+            document.querySelector('.search').addEventListener('input', function () {
+                const friendsList = getFriendsFromLocalStorage();
+                const searchTerm = this.value.toLowerCase();
+                const messages = document.querySelectorAll('.message-item');
+                for (var i = 0; i < friendsList.length; i++) {
+                    const name = messages[i].querySelector('.name').textContent.toLowerCase();
+                    const messageText = messages[i].querySelector('.message-text').textContent.toLowerCase();
+                    if (name.indexOf(searchTerm) !== -1 || messageText.indexOf(searchTerm) !== -1) {
+                        messages[i].style.display = '';
+                    } else {
+                        messages[i].style.display = 'none';
+                    }
+                }
+            });
+        });
+    </script>
+</div>
+</body>
+</html>

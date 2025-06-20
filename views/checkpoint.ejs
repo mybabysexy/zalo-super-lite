@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Checkpoint</title>
+    <link rel="stylesheet" href="/stylesheets/style.css">
+    <link rel="stylesheet" href="/stylesheets/utility.css">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        html, body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            text-align: center;
+        }
+
+        .submit-btn {
+            width: 50%;
+            padding: 8px;
+            margin-top: 10px;
+            cursor: pointer;
+        }
+    </style>
+
+    <script src="/javascripts/ws.js"></script>
+
+    <script type="text/javascript">
+        // Function to save token to localStorage and submit form
+        function saveTokenAndSubmit(event) {
+            // Get the token input value
+            var tokenInput = document.getElementById('token');
+            var tokenValue = tokenInput.value;
+
+            // Save to localStorage if token has a value
+            if (tokenValue) {
+                try {
+                    localStorage.setItem('authToken', tokenValue);
+                } catch (e) {
+                    // Handle potential localStorage errors
+                    console.error('Error saving to localStorage: ', e);
+                }
+            }
+
+            // Form will submit naturally (no need to prevent default)
+        }
+
+        document.addEventListener('DOMContentLoaded', function () {
+            document.addEventListener('zaloWebSocketOpen', function () {
+                window.zaloWebSocket.onmessage = function (event) {
+                    const message = event.data;
+                    try {
+                        const parsedMessage = JSON.parse(message);
+                        if (parsedMessage.action === 'login-success') {
+                            window.location.href = '/chat';
+                        }
+                    } catch (e) {
+                        console.error('Error parsing message:', e);
+                        return;
+                    }
+                }
+            });
+        });
+    </script>
+</head>
+<body>
+<div class="login-container">
+    <div>
+        <h1 class="text-lg m-4">Checkpoint</h1>
+        <h3>Quét mã QR để đăng nhập</h3>
+        <img src="/images/qr.png" alt="qr" style="width: 200px;">
+    </div>
+</div>
+</body>
+</html>

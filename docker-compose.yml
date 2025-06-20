@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    container_name: bb-zl-ejs
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - WS_AUTH_TOKEN=your_token_here
+      - IMEI=your_imei_here
+      - USER_AGENT=your_user_agent_here
+    volumes:
+      - ./cookie.json:/usr/src/app/cookie.json
+      - ./db.json:/usr/src/app/db.json
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s

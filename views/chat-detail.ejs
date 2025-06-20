@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    <link rel="stylesheet" href="/stylesheets/style.css">
+    <link rel="stylesheet" href="/stylesheets/utility.css">
+    <link rel="stylesheet" href="/stylesheets/message-detail.css">
+    <title>Zalo | Chat</title>
+
+    <script src="/javascripts/ws.js"></script>
+</head>
+<body>
+<div id="app">
+    <div class="header">
+        <a href="/chat">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                 stroke="white"
+                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="15 18 9 12 15 6"></polyline>
+            </svg>
+        </a>
+        <div class="header-title">
+            Loading...
+        </div>
+    </div>
+    <div class="content">
+        <div class="text-center m-4">Loading....</div>
+    </div>
+    <form action="/chat/send" method="post" class="message-form" id="message-form">
+        <input type="hidden" name="threadId" value="<%= threadId %>">
+        <input type="text" name="message" placeholder="Nhập tin nhắn..." class="message-input">
+    </form>
+
+    <script>
+        function renderChatItem(message) {
+            const friends = getFriendsFromLocalStorage();
+            var friend = null;
+            for (var j = 0; j < friends.length; j++) {
+                if (friends[j].userId === message.threadId) {
+                    friend = friends[j];
+                    break;
+                }
+            }
+            if (!friend) {
+                console.warn('Friend not found for userId:', message.threadId);
+                return ''; // Return empty string if friend not found
+            }
+
+            const authUser = getAuthUserFromLocalStorage();
+            var myAvatar = '/images/avatar.jpg'; // Default avatar for other messages
+            if (authUser && authUser.profile.avatar) {
+                myAvatar = authUser.profile.avatar;
+            }
+
+            const time = new Date(Number(message.data.ts)).toLocaleTimeString([], {
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: false
+            });
+
+            // Build the HTML string using string concatenation for IE8 compatibility
+            var rendered = '<div class="message-container' + (message.isSelf ? ' mine' : '') + '">';
+            rendered += '<img src="' + (message.isSelf ? myAvatar : friend.avatar) + '" alt="Avatar" class="avatar">';
+            rendered += '<div class="message-bubble">';
+            rendered += '<div class="message-text">';
+            if (message.data.sticker) {
+                const spriteUrl = message.data.sticker.stickerSpriteUrl;
+                const seconds = message.data.sticker.duration || 0;
+                const frames = message.data.sticker.totalFrames || 1;
+
+                // Create sprite container
+                const stickerContainer = document.createElement('div');
+                stickerContainer.className = 'sticker-container';
+
+                // Create and add animated sprite
+                if (frames > 1 && seconds > 0) {
+                    const animatedSticker = animateSprite(spriteUrl, seconds, frames);
+                    stickerContainer.appendChild(animatedSticker);
+                } else {
+                    // Fallback for static stickers
+                    stickerContainer.innerHTML = '<div class="sticker" style="background-image: url(' + spriteUrl + '); width: 100px; height: 100px; background-size: cover;"></div>';
+                }
+
+                rendered += stickerContainer.outerHTML;
+            } else {
+                rendered += message.data.content || '';
+            }
+            rendered += '</div>';
+            rendered += '<div class="message-time text-xs">' + (time || '') + '</div>';
+            rendered += '</div>';
+            rendered += '</div>';
+
+            return rendered;
+        }
+
+        document.addEventListener('zaloWebSocketOpen', function () {
+            window.zalo.getChat('<%= threadId %>');
+
+            window.zaloWebSocket.onmessage = function (event) {
+                var headerTitle = document.querySelector('.header-title');
+                var headerText = 'Chat';
+                var friends = getFriendsFromLocalStorage();
+
+                const message = event.data;
+                try {
+                    const parsedMessage = JSON.parse(message);
+
+                    if (parsedMessage.error === 'Zalo API not initialized') {
+                        // Redirect to login page if unauthorized
+                        logout();
+                        return;
+                    } else if (parsedMessage.error === 'Thread not found') {
+                        // update the title with the friend's name
+
+                        for (var k = 0; k < friends.length; k++) {
+                            if (friends[k].userId === '<%= threadId %>') {
+                                headerText = friends[k].displayName || 'Chat';
+                                break;
+                            }
+                        }
+                        headerTitle.textContent = headerText;
+
+                        // update the page title
+                        document.title = 'Zalo | ' + headerText;
+
+                        document.querySelector('.content').innerHTML = '<div class="text-center m-4">Hãy gửi tin nhắn cho bạn bè của bạn!</div>';
+                        return;
+                    }
+
+                    switch (parsedMessage.action) {
+                        case 'fetchAccountInfo':
+                            localStorage.setItem('authUser', JSON.stringify(parsedMessage.data));
+                            break;
+                        case 'getChat':
+                            var messages = parsedMessage.data;
+
+                            // update the title with the friend's name
+                            if (messages.length > 0) {
+                                var firstMessage = messages[0];
+                                for (var j = 0; j < friends.length; j++) {
+                                    if (friends[j].userId === firstMessage.threadId) {
+                                        headerText = friends[j].displayName || 'Chat';
+                                        break;
+                                    }
+                                }
+                            } else {
+                                headerText = 'Chat';
+                            }
+                            headerTitle.textContent = headerText;
+
+                            // update the page title
+                            document.title = 'Zalo | ' + headerText;
+
+                            // Create a container for the rendered content
+                            var container = document.getElementById('content') || document.getElementsByClassName('content')[0];
+
+                            // Clear existing content
+                            container.innerHTML = '';
+
+                            for (var i = 0; i < messages.length; i++) {
+                                var item = messages[i];
+                                // Render each message using the renderChatItem function
+                                container.innerHTML += renderChatItem(item);
+                            }
+
+                            // Scroll to the bottom of the chat
+                            window.scrollTo(0, document.body.scrollHeight);
+
+                            break;
+                        case 'newMessage':
+                            var newMessage = parsedMessage.data;
+                            console.log('New message received:', newMessage);
+
+                            if (newMessage.threadId !== '<%= threadId %>') {
+                                console.warn('New message threadId does not match current threadId:', newMessage.threadId);
+                                return; // Ignore messages not for the current chat
+                            }
+
+                            // Render the new message and append it to the chat
+                            const renderedMessage = renderChatItem(newMessage);
+                            const contentDiv = document.querySelector('.content');
+                            contentDiv.innerHTML += renderedMessage;
+
+                            // Scroll to the bottom of the chat
+                            window.scrollTo(0, document.body.scrollHeight);
+
+                            // focus on the message input field
+                            const messageInput = document.querySelector('.message-input');
+                            messageInput.focus();
+                            break;
+                        default:
+                            console.log('Unknown action:', parsedMessage.action);
+                            break;
+                    }
+                } catch (e) {
+                    console.error('Error parsing message:', e);
+                    console.log('Raw message:', message);
+                }
+            };
+
+        });
+
+        document.addEventListener('DOMContentLoaded', function () {
+            // submit the form when the user presses Enter
+            const form = document.getElementById('message-form');
+            form.addEventListener('submit', function (e) {
+                e.preventDefault();
+                const messageInput = form.querySelector('.message-input');
+                if (messageInput.value.trim() === '') {
+                    alert('Vui lòng nhập tin nhắn!');
+                    return;
+                }
+
+                // const formData = new FormData(form);
+                // Use XMLHttpRequest for IE8 compatibility
+                // var xhr = new XMLHttpRequest();
+                // xhr.open('POST', '/chat/send', true);
+                // xhr.onreadystatechange = function () {
+                //     if (xhr.readyState === 4) {
+                //         if (xhr.status === 200) {
+                //             // Handle success if needed
+                //             // get the response
+                //             const response = JSON.parse(xhr.responseText);
+                //             if (response.status === 'success') {
+                //                 // Append the new message to the chat
+                //                 // document.querySelector('.content').innerHTML += response.data;
+                //
+                //                 window.scrollTo(0, document.body.scrollHeight); // Scroll to the bottom
+                //             } else {
+                //                 alert(response.message);
+                //             }
+                //         }
+                //     }
+                // };
+                // xhr.send(formData);
+
+                window.zalo.sendMessage("<%= threadId %>", messageInput.value)
+
+                messageInput.value = ''; // Clear the input after sending
+            });
+        });
+    </script>
+</div>
+</body>
+</html>

@@ -1,0 +1,99 @@
+.header {
+    background-color: #005AE0;
+    color: white;
+    padding: 8px;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 10;
+}
+
+.header * {
+    display: inline-block;
+    vertical-align: middle;
+}
+
+.header svg {
+    width: 24px;
+    height: 24px;
+    margin-top: -4px;
+}
+
+.header .header-title {
+    margin-left: 8px;
+}
+
+.content {
+    padding-top: 48px; /* Adjust for header height */
+}
+
+.message-container {
+    width: 80%;
+    padding: 8px;
+    float: left;
+    clear: both;
+}
+
+.clearfix {
+    /*clear: both;*/
+}
+
+.message-container .avatar {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    vertical-align: middle;
+    float: left;
+}
+
+.message-container .message-bubble {
+    background-color: #FFFFFF;
+    border-radius: 8px;
+    float: left;
+    padding: 8px;
+    margin: 0 8px;
+    border: 1px solid #E0E0E0;
+}
+
+.message-container .message-time {
+    color: #888888;
+}
+
+.message-container.mine {
+    float: right;
+}
+
+.message-container.mine .avatar {
+    float: right;
+}
+
+.message-container.mine .message-bubble {
+    background-color: #E5F1FF;
+    float: right;
+}
+
+.message-container:last-child {
+    margin-bottom: 48px;
+}
+
+.message-form {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background-color: #FFFFFF;
+    padding: 4px;
+    border-top: 1px solid #E0E0E0;
+}
+
+.message-form input[type="text"] {
+    width: 95%;
+    padding: 0 8px;
+    margin: 0;
+}
+
+.message-form button[type="submit"] {
+    background-color: transparent;
+    border: none;
+}
